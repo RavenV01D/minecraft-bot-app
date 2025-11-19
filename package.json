@@ -1,0 +1,59 @@
+{
+  "name": "minecraft-bot-app",
+  "version": "1.0.0",
+  "description": "Native macOS Minecraft bot controller with automation",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --mac",
+    "build:clean": "npm prune --production && npx electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.minecraftbot.app",
+    "productName": "Minecraft Bot",
+    "asar": true,
+    "asarUnpack": ["node_modules/canvas/**/*"],
+    "files": [
+      "main.js",
+      "dist/",
+      "assets/",
+      "package.json",
+      "!**/*.md",
+      "!**/test/",
+      "!**/docs/",
+      "!**/example/"
+    ],
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "assets/icon.icns",
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    }
+  },
+  "keywords": ["minecraft", "bot", "automation", "electron"],
+  "author": "Raven_Void",
+  "license": "MIT",
+  "dependencies": {
+    "canvas": "^2.11.2",
+    "mineflayer": "^4.20.1",
+    "mineflayer-auto-eat": "^2.1.1",
+    "mineflayer-collectblock": "^1.3.0",
+    "mineflayer-pathfinder": "^2.4.4",
+    "mineflayer-pvp": "^1.3.2",
+    "prismarine-viewer": "^1.24.0",
+    "vec3": "^0.1.8"
+  },
+  "devDependencies": {
+    "electron": "^27.3.11",
+    "electron-builder": "^24.9.1"
+  }
+}

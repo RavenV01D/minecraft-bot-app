@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minecraft Bot Controller</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="titlebar">
+    <span class="titlebar-text">Minecraft Bot Controller</span>
+  </div>
+
+  <div class="container">
+    <!-- Connection Panel -->
+    <div class="panel connection-panel">
+      <h2>Connection</h2>
+      <form id="connect-form">
+        <input type="text" id="host" placeholder="Server Host" required>
+        <input type="number" id="port" placeholder="Port (25565)" value="25565">
+        <input type="text" id="username" placeholder="Bot Username" required>
+        <input type="text" id="version" placeholder="Version (auto)">
+        <button type="submit" id="connect-btn">Connect</button>
+        <button type="button" id="disconnect-btn" disabled>Disconnect</button>
+      </form>
+      <div id="status">Not Connected</div>
+    </div>
+
+    <!-- Main View -->
+    <div class="main-content">
+      <!-- Viewer -->
+      <div class="viewer-container">
+        <iframe id="viewer" src="" frameborder="0"></iframe>
+        <div class="stats-overlay">
+          <div id="position-info">
+            <span id="pos-xyz">X: 0 Y: 0 Z: 0</span>
+            <span id="pos-rotation">Yaw: 0° Pitch: 0°</span>
+          </div>
+          <div id="health-info">
+            <span id="health">❤️ 20</span>
+            <span id="food">🍖 20</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls-panel">
+        <h3>Movement Controls</h3>
+        <div class="control-grid">
+          <div class="keybind-hint">W/↑: Forward</div>
+          <div class="keybind-hint">S/↓: Backward</div>
+          <div class="keybind-hint">A/←: Left</div>
+          <div class="keybind-hint">D/→: Right</div>
+          <div class="keybind-hint">Space: Jump</div>
+          <div class="keybind-hint">Shift: Sneak</div>
+        </div>
+        
+        <h3>Actions</h3>
+        <div class="action-buttons">
+          <button class="action-btn" data-action="attack">Attack (Left Click)</button>
+          <button class="action-btn" data-action="use">Use (Right Click)</button>
+          <button class="action-btn" data-action="drop">Drop (Q)</button>
+          <button class="action-btn" data-action="swap">Swap Hands (F)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Sidebar -->
+    <div class="sidebar">
+      <!-- Chat -->
+      <div class="panel chat-panel">
+        <h3>Chat</h3>
+        <div id="chat-messages"></div>
+        <div class="chat-input-container">
+          <input type="text" id="chat-input" placeholder="Type message..." maxlength="256">
+          <button id="send-chat-btn">Send</button>
+        </div>
+      </div>
+
+      <!-- Automation -->
+      <div class="panel automation-panel">
+        <h3>Automation</h3>
+        
+        <div class="automation-section">
+          <label>
+            <input type="checkbox" id="auto-mine-toggle">
+            Auto Mine
+          </label>
+          <input type="text" id="mine-block" placeholder="Block name (e.g., stone)">
+        </div>
+
+        <div class="automation-section">
+          <label>
+            <input type="checkbox" id="pvp-toggle">
+            Auto PvP
+          </label>
+        </div>
+
+        <div class="automation-section">
+          <label>
+            <input type="checkbox" id="follow-toggle">
+            Follow Player
+          </label>
+          <input type="text" id="follow-username" placeholder="Username">
+        </div>
+
+        <div id="automation-log"></div>
+      </div>
+
+      <!-- Macros -->
+      <div class="panel macro-panel">
+        <h3>Macros</h3>
+        
+        <div class="macro-recorder">
+          <button id="record-macro-btn">⏺ Record Macro</button>
+          <button id="stop-record-btn" disabled>⏹ Stop</button>
+          <input type="text" id="macro-name" placeholder="Macro name">
+          <button id="save-macro-btn" disabled>Save</button>
+        </div>
+
+        <div class="macro-list">
+          <h4>Saved Macros</h4>
+          <div id="macros"></div>
+        </div>
+
+        <div id="recording-indicator" class="hidden">
+          🔴 Recording...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
