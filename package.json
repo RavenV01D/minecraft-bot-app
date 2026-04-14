@@ -7,8 +7,8 @@
     "postinstall": "node scripts/patch-prismarine-viewer.js",
     "start": "electron .",
     "dev": "electron . --dev",
-    "build": "electron-builder --mac",
-    "build:clean": "npm prune --production && npx electron-builder --mac"
+    "build": "electron-builder",
+    "build:clean": "npm prune --production && npx electron-builder"
   },
   "build": {
     "appId": "com.minecraftbot.app",
