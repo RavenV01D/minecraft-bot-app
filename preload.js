@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runMacro: (name, repeat) => ipcRenderer.send('run-macro', { name, repeat }),
   stopMacro: (name) => ipcRenderer.send('stop-macro', name),
   getMacros: () => ipcRenderer.invoke('get-macros'),
+
+  // Inventory
+  getInventory: () => ipcRenderer.invoke('get-inventory'),
+  inventoryAction: (payload) => ipcRenderer.invoke('inventory-action', payload),
   
   // Event listeners
   onBotReady: (callback) => ipcRenderer.on('bot-ready', (event, data) => callback(data)),
@@ -31,5 +35,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onBotError: (callback) => ipcRenderer.on('bot-error', (event, error) => callback(error)),
   onBotDisconnected: (callback) => ipcRenderer.on('bot-disconnected', () => callback()),
   onAutomationLog: (callback) => ipcRenderer.on('automation-log', (event, message) => callback(message)),
-  onMacroSaved: (callback) => ipcRenderer.on('macro-saved', (event, data) => callback(data))
+  onMacroSaved: (callback) => ipcRenderer.on('macro-saved', (event, data) => callback(data)),
+  onInventoryUpdate: (callback) => ipcRenderer.on('inventory-update', (event, data) => callback(data))
 });

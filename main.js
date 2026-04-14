@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
@@ -6,14 +7,147 @@ const pvp = require('mineflayer-pvp').plugin;
 const collectBlock = require('mineflayer-collectblock').plugin;
 const autoEat = require('mineflayer-auto-eat');
 const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-const Vec3 = require('vec3').Vec3;
 
 let mainWindow;
 let bot = null;
 let viewerPort = 3001;
 let automationIntervals = {};
 let macros = {};
-let currentTask = null;
+let positionInterval = null;
+let inventoryListenerCleanup = null;
+
+function getMacrosPath() {
+  return path.join(app.getPath('userData'), 'macros.json');
+}
+
+function loadMacros() {
+  try {
+    const macrosPath = getMacrosPath();
+    if (!fs.existsSync(macrosPath)) return;
+    const content = fs.readFileSync(macrosPath, 'utf8');
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      macros = parsed;
+    }
+  } catch (error) {
+    console.error('Failed to load macros:', error);
+    macros = {};
+  }
+}
+
+function saveMacros() {
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true });
+    fs.writeFileSync(getMacrosPath(), JSON.stringify(macros, null, 2));
+  } catch (error) {
+    console.error('Failed to save macros:', error);
+  }
+}
+
+function clearPositionUpdates() {
+  if (positionInterval) {
+    clearInterval(positionInterval);
+    positionInterval = null;
+  }
+}
+
+function clearAutomation(key) {
+  const automation = automationIntervals[key];
+  if (!automation) return;
+
+  if (automation.type === 'loop') {
+    automation.stopped = true;
+    if (automation.timeout) clearTimeout(automation.timeout);
+  } else {
+    clearInterval(automation);
+  }
+
+  delete automationIntervals[key];
+}
+
+function serializeItem(item) {
+  if (!item) return null;
+
+  return {
+    slot: item.slot,
+    name: item.name,
+    displayName: item.displayName || item.name,
+    count: item.count,
+    type: item.type,
+    metadata: item.metadata,
+    stackSize: item.stackSize
+  };
+}
+
+function getInventorySnapshot() {
+  if (!bot || !bot.inventory) {
+    return {
+      connected: false,
+      quickBarSlot: 0,
+      selectedItem: null,
+      heldItem: null,
+      armor: [],
+      offhand: null,
+      main: [],
+      hotbar: []
+    };
+  }
+
+  const slots = bot.inventory.slots;
+  const mapSlot = (slot, label = null) => ({
+    slot,
+    label,
+    item: serializeItem(slots[slot])
+  });
+
+  return {
+    connected: true,
+    quickBarSlot: bot.quickBarSlot,
+    selectedItem: serializeItem(bot.inventory.selectedItem),
+    heldItem: serializeItem(bot.heldItem),
+    armor: [
+      mapSlot(5, 'Head'),
+      mapSlot(6, 'Chest'),
+      mapSlot(7, 'Legs'),
+      mapSlot(8, 'Boots')
+    ],
+    offhand: mapSlot(45, 'Offhand'),
+    main: Array.from({ length: 27 }, (_, index) => mapSlot(9 + index)),
+    hotbar: Array.from({ length: 9 }, (_, index) => mapSlot(36 + index, `${index + 1}`))
+  };
+}
+
+function emitInventoryUpdate() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('inventory-update', getInventorySnapshot());
+}
+
+function attachInventoryListeners() {
+  if (!bot || !bot.inventory) return;
+  detachInventoryListeners();
+  const boundBot = bot;
+
+  const syncInventory = () => emitInventoryUpdate();
+  boundBot.inventory.on('updateSlot', syncInventory);
+  boundBot.on('heldItemChanged', syncInventory);
+  boundBot.on('windowOpen', syncInventory);
+  boundBot.on('windowClose', syncInventory);
+
+  inventoryListenerCleanup = () => {
+    if (!boundBot || !boundBot.inventory) return;
+    boundBot.inventory.removeListener('updateSlot', syncInventory);
+    boundBot.removeListener('heldItemChanged', syncInventory);
+    boundBot.removeListener('windowOpen', syncInventory);
+    boundBot.removeListener('windowClose', syncInventory);
+  };
+}
+
+function detachInventoryListeners() {
+  if (inventoryListenerCleanup) {
+    inventoryListenerCleanup();
+    inventoryListenerCleanup = null;
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -34,10 +168,15 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  loadMacros();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (bot) bot.quit();
+  detachInventoryListeners();
+  clearPositionUpdates();
   app.quit();
 });
 
@@ -51,6 +190,7 @@ app.on('activate', () => {
 ipcMain.handle('connect-bot', async (event, config) => {
   try {
     if (bot) {
+      detachInventoryListeners();
       bot.quit();
       stopAllAutomation();
     }
@@ -69,6 +209,7 @@ ipcMain.handle('connect-bot', async (event, config) => {
     bot.loadPlugin(pathfinder);
     bot.loadPlugin(pvp);
     bot.loadPlugin(collectBlock);
+    attachInventoryListeners();
 
     bot.once('spawn', () => {
       // Initialize pathfinder
@@ -94,9 +235,11 @@ ipcMain.handle('connect-bot', async (event, config) => {
         version: bot.version,
         viewerPort: viewerPort
       });
+      emitInventoryUpdate();
 
       // Position updates
-      setInterval(() => {
+      clearPositionUpdates();
+      positionInterval = setInterval(() => {
         if (bot && bot.entity) {
           mainWindow.webContents.send('bot-position', {
             x: bot.entity.position.x.toFixed(2),
@@ -127,8 +270,11 @@ ipcMain.handle('connect-bot', async (event, config) => {
 
     bot.on('end', () => {
       mainWindow.webContents.send('bot-disconnected');
+      detachInventoryListeners();
       bot = null;
+      clearPositionUpdates();
       stopAllAutomation();
+      emitInventoryUpdate();
     });
 
     return { success: true };
@@ -205,7 +351,60 @@ ipcMain.on('send-chat', (event, message) => {
 ipcMain.on('disconnect-bot', () => {
   if (bot) {
     bot.quit();
+    detachInventoryListeners();
+    clearPositionUpdates();
     stopAllAutomation();
+  }
+});
+
+ipcMain.handle('get-inventory', () => {
+  return getInventorySnapshot();
+});
+
+ipcMain.handle('inventory-action', async (event, payload) => {
+  if (!bot || !bot.inventory) {
+    return { success: false, error: 'Bot is not connected', inventory: getInventorySnapshot() };
+  }
+
+  try {
+    switch (payload.type) {
+      case 'select-hotbar':
+        if (typeof payload.hotbarIndex !== 'number' || payload.hotbarIndex < 0 || payload.hotbarIndex > 8) {
+          throw new Error('Invalid hotbar slot');
+        }
+        bot.setQuickBarSlot(payload.hotbarIndex);
+        break;
+      case 'toss-slot': {
+        const item = bot.inventory.slots[payload.slot];
+        if (!item) throw new Error('That slot is empty');
+        await bot.tossStack(item);
+        break;
+      }
+      case 'move-slot':
+        if (typeof payload.slot !== 'number' || typeof payload.targetSlot !== 'number') {
+          throw new Error('Invalid inventory move');
+        }
+        if (payload.slot !== payload.targetSlot) {
+          await bot.moveSlotItem(payload.slot, payload.targetSlot);
+        }
+        break;
+      case 'equip-slot':
+        if (typeof payload.slot !== 'number') throw new Error('Invalid slot');
+        if (payload.slot >= 36 && payload.slot <= 44) {
+          bot.setQuickBarSlot(payload.slot - 36);
+        } else {
+          await bot.moveSlotItem(payload.slot, 36 + bot.quickBarSlot);
+        }
+        break;
+      default:
+        throw new Error('Unknown inventory action');
+    }
+
+    emitInventoryUpdate();
+    return { success: true, inventory: getInventorySnapshot() };
+  } catch (error) {
+    emitInventoryUpdate();
+    return { success: false, error: error.message, inventory: getInventorySnapshot() };
   }
 });
 
@@ -214,6 +413,7 @@ ipcMain.on('toggle-auto-mine', (event, { enabled, blockName }) => {
   if (!bot) return;
   
   if (enabled) {
+    clearAutomation('mining');
     automationIntervals.mining = setInterval(async () => {
       try {
         const mcData = require('minecraft-data')(bot.version);
@@ -235,10 +435,7 @@ ipcMain.on('toggle-auto-mine', (event, { enabled, blockName }) => {
       }
     }, 1000);
   } else {
-    if (automationIntervals.mining) {
-      clearInterval(automationIntervals.mining);
-      delete automationIntervals.mining;
-    }
+    clearAutomation('mining');
   }
 });
 
@@ -247,6 +444,7 @@ ipcMain.on('toggle-pvp', (event, enabled) => {
   if (!bot) return;
   
   if (enabled) {
+    clearAutomation('pvp');
     automationIntervals.pvp = setInterval(() => {
       const entity = bot.nearestEntity(e => 
         e.type === 'player' && 
@@ -260,10 +458,7 @@ ipcMain.on('toggle-pvp', (event, enabled) => {
     }, 100);
   } else {
     bot.pvp.stop();
-    if (automationIntervals.pvp) {
-      clearInterval(automationIntervals.pvp);
-      delete automationIntervals.pvp;
-    }
+    clearAutomation('pvp');
   }
 });
 
@@ -272,6 +467,7 @@ ipcMain.on('follow-player', (event, { enabled, username }) => {
   if (!bot) return;
   
   if (enabled) {
+    clearAutomation('follow');
     const followTask = () => {
       const player = bot.players[username]?.entity;
       if (player) {
@@ -283,16 +479,14 @@ ipcMain.on('follow-player', (event, { enabled, username }) => {
     automationIntervals.follow = setInterval(followTask, 500);
   } else {
     bot.pathfinder.setGoal(null);
-    if (automationIntervals.follow) {
-      clearInterval(automationIntervals.follow);
-      delete automationIntervals.follow;
-    }
+    clearAutomation('follow');
   }
 });
 
 // Macro system
 ipcMain.on('save-macro', (event, { name, actions }) => {
   macros[name] = actions;
+  saveMacros();
   mainWindow.webContents.send('macro-saved', { name, count: Object.keys(macros).length });
 });
 
@@ -331,18 +525,39 @@ ipcMain.on('run-macro', async (event, { name, repeat }) => {
   };
   
   if (repeat) {
-    automationIntervals[`macro_${name}`] = setInterval(executeMacro, 100);
+    const key = `macro_${name}`;
+    clearAutomation(key);
+
+    const macroLoop = {
+      type: 'loop',
+      running: false,
+      stopped: false,
+      timeout: null
+    };
+
+    const scheduleNextRun = (delay = 100) => {
+      if (macroLoop.stopped) return;
+      macroLoop.timeout = setTimeout(async () => {
+        if (macroLoop.running || macroLoop.stopped) return;
+        macroLoop.running = true;
+        try {
+          await executeMacro();
+        } finally {
+          macroLoop.running = false;
+          scheduleNextRun();
+        }
+      }, delay);
+    };
+
+    automationIntervals[key] = macroLoop;
+    scheduleNextRun(0);
   } else {
     await executeMacro();
   }
 });
 
 ipcMain.on('stop-macro', (event, name) => {
-  const key = `macro_${name}`;
-  if (automationIntervals[key]) {
-    clearInterval(automationIntervals[key]);
-    delete automationIntervals[key];
-  }
+  clearAutomation(`macro_${name}`);
 });
 
 ipcMain.handle('get-macros', () => {
@@ -350,8 +565,7 @@ ipcMain.handle('get-macros', () => {
 });
 
 function stopAllAutomation() {
-  Object.values(automationIntervals).forEach(interval => clearInterval(interval));
-  automationIntervals = {};
+  Object.keys(automationIntervals).forEach(clearAutomation);
   if (bot) {
     bot.pathfinder.setGoal(null);
     bot.pvp.stop();
