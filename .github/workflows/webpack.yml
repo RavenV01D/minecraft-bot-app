@@ -8,17 +8,21 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Install Linux deps
+      # ✅ FIXED Linux deps (Ubuntu modern packages)
+      - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
@@ -27,14 +31,29 @@ jobs:
             libatk-bridge2.0-0 \
             libgtk-3-0 \
             libxss1 \
-            libasound2 \
+            libasound2t64 \
             libxrandr2 \
             libgbm-dev
 
-      - run: npm install
-      - run: npm run build -- --publish never
+      # ✅ Faster + more reliable installs
+      - name: Install dependencies
+        run: npm ci
 
-      - uses: softprops/action-gh-release@v1
+      # ✅ Build without auto-publish (avoids CI crashes)
+      - name: Build app
+        run: npm run build -- --publish never
+
+      # ✅ Upload artifacts (so you ALWAYS get files even if release fails)
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}
+          path: dist/
+
+      # ✅ Optional: auto GitHub release
+      - name: Create Release
+        if: matrix.os == 'ubuntu-latest'
+        uses: softprops/action-gh-release@v1
         with:
           files: dist/*
         env:
