@@ -16,10 +16,23 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 18   # ← LOCK THIS
+          node-version: 18
+
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 \
+            libatk-bridge2.0-0 \
+            libgtk-3-0 \
+            libxss1 \
+            libasound2 \
+            libxrandr2 \
+            libgbm-dev
 
       - run: npm install
-      - run: npm run build
+      - run: npm run build -- --publish never
 
       - uses: softprops/action-gh-release@v1
         with:
