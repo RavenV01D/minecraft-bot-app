@@ -2,6 +2,8 @@ name: Build & Release
 
 on:
   workflow_dispatch:
+  release:
+    types: [created]
 
 jobs:
   build:
@@ -19,9 +21,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
 
-      # ✅ FIXED Linux deps (Ubuntu modern packages)
+      # Linux deps (modern Ubuntu fix)
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -33,26 +35,29 @@ jobs:
             libxss1 \
             libasound2t64 \
             libxrandr2 \
-            libgbm-dev
+            libgbm-dev \
+            build-essential \
+            python3
 
-      # ✅ Faster + more reliable installs
       - name: Install dependencies
         run: npm ci
 
-      # ✅ Build without auto-publish (avoids CI crashes)
+      - name: Rebuild native deps
+        run: npx electron-builder install-app-deps
+
       - name: Build app
         run: npm run build -- --publish never
 
-      # ✅ Upload artifacts (so you ALWAYS get files even if release fails)
-      - name: Upload build artifacts
+      # Always upload artifacts (backup)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
           path: dist/
 
-      # ✅ Optional: auto GitHub release
-      - name: Create Release
-        if: matrix.os == 'ubuntu-latest'
+      # Upload to GitHub Release ONLY if triggered from release
+      - name: Upload to Release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
           files: dist/*
